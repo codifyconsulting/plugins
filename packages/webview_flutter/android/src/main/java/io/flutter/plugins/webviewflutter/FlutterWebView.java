@@ -5,36 +5,60 @@
 package io.flutter.plugins.webviewflutter;
 
 import android.annotation.TargetApi;
+import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.hardware.display.DisplayManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Message;
 import android.view.View;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebStorage;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
+
 import io.flutter.plugin.common.BinaryMessenger;
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler;
 import io.flutter.plugin.common.MethodChannel.Result;
+import io.flutter.plugin.common.PluginRegistry;
 import io.flutter.plugin.platform.PlatformView;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
-public class FlutterWebView implements PlatformView, MethodCallHandler {
+public class FlutterWebView implements PlatformView, MethodCallHandler, PluginRegistry.ActivityResultListener {
   private static final String JS_CHANNEL_NAMES_FIELD = "javascriptChannelNames";
+  private static final int SELECT_FILE_CODE = 1001;
   private final InputAwareWebView webView;
   private final MethodChannel methodChannel;
   private final FlutterWebViewClient flutterWebViewClient;
   private final Handler platformThreadHandler;
+  private ValueCallback<Uri[]> filePathCallback;
 
-  // Verifies that a url opened by `Window.open` has a secure url.
+  @RequiresApi(api = Build.VERSION_CODES.LOLLIPOP)
+  @Override
+  public boolean onActivityResult(int requestCode, int resultCode, Intent data) {
+    if(requestCode == SELECT_FILE_CODE) {
+      if (resultCode == Activity.RESULT_OK) {
+        final Uri[] result = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
+        filePathCallback.onReceiveValue(result);
+        filePathCallback = null;
+      }
+      return true;
+    }
+
+    return false;
+  }
+
+    // Verifies that a url opened by `Window.open` has a secure url.
   private class FlutterWebChromeClient extends WebChromeClient {
     @Override
     public boolean onCreateWindow(
@@ -72,6 +96,26 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
 
       return true;
     }
+
+
+    @Override
+    public boolean onShowFileChooser(WebView webView, ValueCallback<Uri[]> filePathCallback, FileChooserParams fileChooserParams) {
+      if(FlutterWebView.this.filePathCallback != null) {
+        FlutterWebView.this.filePathCallback.onReceiveValue(null);
+      }
+      FlutterWebView.this.filePathCallback = filePathCallback;
+      try {
+        if(Shared.activity != null) {
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            Shared.activity.startActivityForResult(fileChooserParams.createIntent(), SELECT_FILE_CODE);
+            return true;
+          }
+        }
+      } catch (Exception exception) {
+        return false;
+      }
+      return false;
+    }
   }
 
   @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR1)
@@ -83,6 +127,7 @@ public class FlutterWebView implements PlatformView, MethodCallHandler {
       Map<String, Object> params,
       View containerView) {
 
+    Shared.activityPluginBinding.addActivityResultListener(this);
     DisplayListenerProxy displayListenerProxy = new DisplayListenerProxy();
     DisplayManager displayManager =
         (DisplayManager) context.getSystemService(Context.DISPLAY_SERVICE);

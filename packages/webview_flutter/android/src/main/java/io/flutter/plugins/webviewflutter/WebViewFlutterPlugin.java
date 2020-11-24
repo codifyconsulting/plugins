@@ -4,7 +4,11 @@
 
 package io.flutter.plugins.webviewflutter;
 
+import androidx.annotation.NonNull;
+
 import io.flutter.embedding.engine.plugins.FlutterPlugin;
+import io.flutter.embedding.engine.plugins.activity.ActivityAware;
+import io.flutter.embedding.engine.plugins.activity.ActivityPluginBinding;
 import io.flutter.plugin.common.BinaryMessenger;
 
 /**
@@ -15,7 +19,7 @@ import io.flutter.plugin.common.BinaryMessenger;
  * <p>Call {@link #registerWith(Registrar)} to use the stable {@code io.flutter.plugin.common}
  * package instead.
  */
-public class WebViewFlutterPlugin implements FlutterPlugin {
+public class WebViewFlutterPlugin implements FlutterPlugin, ActivityAware {
 
   private FlutterCookieManager flutterCookieManager;
 
@@ -42,6 +46,7 @@ public class WebViewFlutterPlugin implements FlutterPlugin {
    */
   @SuppressWarnings("deprecation")
   public static void registerWith(io.flutter.plugin.common.PluginRegistry.Registrar registrar) {
+    Shared.registrar = registrar;
     registrar
         .platformViewRegistry()
         .registerViewFactory(
@@ -52,6 +57,7 @@ public class WebViewFlutterPlugin implements FlutterPlugin {
 
   @Override
   public void onAttachedToEngine(FlutterPluginBinding binding) {
+    Shared.flutterAssets = binding.getFlutterAssets();
     BinaryMessenger messenger = binding.getBinaryMessenger();
     binding
         .getPlatformViewRegistry()
@@ -68,5 +74,31 @@ public class WebViewFlutterPlugin implements FlutterPlugin {
 
     flutterCookieManager.dispose();
     flutterCookieManager = null;
+  }
+  
+  //======================= ACTIVITY AWARE ==============================================================
+
+  @Override
+  public void onAttachedToActivity(@NonNull ActivityPluginBinding binding) {
+    Shared.activityPluginBinding = binding;
+    Shared.activity = binding.getActivity();
+  }
+
+  @Override
+  public void onDetachedFromActivityForConfigChanges() {
+    Shared.activityPluginBinding = null;
+    Shared.activity = null;
+  }
+
+  @Override
+  public void onReattachedToActivityForConfigChanges(@NonNull ActivityPluginBinding binding) {
+    Shared.activityPluginBinding = binding;
+    Shared.activity = binding.getActivity();
+  }
+
+  @Override
+  public void onDetachedFromActivity() {
+    Shared.activityPluginBinding = null;
+    Shared.activity = null;
   }
 }
