@@ -6,14 +6,18 @@ package io.flutter.plugins.webviewflutter;
 
 import android.annotation.TargetApi;
 import android.app.Activity;
+import android.app.DownloadManager;
 import android.content.Context;
 import android.content.Intent;
 import android.hardware.display.DisplayManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Message;
 import android.view.View;
+import android.webkit.DownloadListener;
+import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
@@ -49,8 +53,10 @@ public class FlutterWebView implements PlatformView, MethodCallHandler, PluginRe
     if(requestCode == SELECT_FILE_CODE) {
       if (resultCode == Activity.RESULT_OK) {
         final Uri[] result = WebChromeClient.FileChooserParams.parseResult(resultCode, data);
-        filePathCallback.onReceiveValue(result);
-        filePathCallback = null;
+        if(filePathCallback != null) {
+          filePathCallback.onReceiveValue(result);
+          filePathCallback = null;
+        }
       }
       return true;
     }
@@ -103,10 +109,11 @@ public class FlutterWebView implements PlatformView, MethodCallHandler, PluginRe
       if(FlutterWebView.this.filePathCallback != null) {
         FlutterWebView.this.filePathCallback.onReceiveValue(null);
       }
-      FlutterWebView.this.filePathCallback = filePathCallback;
+
       try {
         if(Shared.activity != null) {
           if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            FlutterWebView.this.filePathCallback = filePathCallback;
             Shared.activity.startActivityForResult(fileChooserParams.createIntent(), SELECT_FILE_CODE);
             return true;
           }
@@ -119,7 +126,6 @@ public class FlutterWebView implements PlatformView, MethodCallHandler, PluginRe
   }
 
   @TargetApi(Build.VERSION_CODES.JELLY_BEAN_MR1)
-  @SuppressWarnings("unchecked")
   FlutterWebView(
       final Context context,
       BinaryMessenger messenger,
@@ -143,6 +149,18 @@ public class FlutterWebView implements PlatformView, MethodCallHandler, PluginRe
     // Multi windows is set with FlutterWebChromeClient by default to handle internal bug: b/159892679.
     webView.getSettings().setSupportMultipleWindows(true);
     webView.setWebChromeClient(new FlutterWebChromeClient());
+    webView.setDownloadListener(new DownloadListener() {
+      @Override
+      public void onDownloadStart(String url, String userAgent,
+                                  String contentDisposition, String mimeType,
+                                  long contentLength) {
+        if(Shared.activity != null) {
+          Intent i = new Intent(Intent.ACTION_VIEW);
+          i.setDataAndType(Uri.parse(url), mimeType);
+          Shared.activity.startActivity(i);
+        }
+      }
+    });
 
     methodChannel = new MethodChannel(messenger, "plugins.flutter.io/webview_" + id);
     methodChannel.setMethodCallHandler(this);
